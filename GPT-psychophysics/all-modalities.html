@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Explore human and GPT similarity</title>
+    <!--    Javascript -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+            integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.14.3/dist/umd/popper.min.js"
+            integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.1.3/dist/js/bootstrap.min.js"
+            integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy"
+            crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-tour/0.12.0/js/bootstrap-tour-standalone.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.14/dist/js/bootstrap-select.min.js"></script>
+    <script src="https://d3js.org/d3.v4.js"></script>
+    <script src="https://d3js.org/d3-color.v1.min.js"></script>
+    <script src="https://d3js.org/d3-interpolate.v1.min.js"></script>
+    <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+
+    <!--    CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.1.3/dist/css/bootstrap.min.css"
+          integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-tour/0.12.0/css/bootstrap-tour-standalone.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.14/dist/css/bootstrap-select.min.css">
+
+</head>
+<style>
+    .background {
+        fill: #fff;
+    }
+
+    svg text {
+        font-size: 0.6em;
+    }
+
+    .icon {
+        height: 25px;
+        max-width: 25px;
+    }
+
+    .color_patch {
+        width: 10px;
+        height: 10px;
+        display: inline-block;
+        background-color: var(--current_color);
+    }
+
+    :root {
+        --pitch: #f39c07;
+        --loudness: #04a171;
+        --colors: #2ab6ea;
+        --consonants: #da75aa;
+        --taste: #df5354;
+        --timbre: #0475b8
+    }
+
+    .menu_item {
+        cursor: pointer;
+        font-weight: bold;
+        text-transform: capitalize;
+    }
+
+    .pitch {
+        color: var(--pitch);
+    }
+
+    .loudness {
+        color: var(--loudness);
+    }
+
+    .colors {
+        color: var(--colors);
+    }
+
+    .consonants {
+        color: var(--consonants);
+    }
+
+    .taste {
+        color: var(--taste);
+    }
+
+    .timbre {
+        color: var(--timbre);
+    }
+
+    .dropdown-item.active, .dropdown-item:active {
+        background-color: var(--light);
+        color: var(--dark);
+    }
+</style>
+<body>
+
+
+<div id="buttons">
+    <div class="container">
+
+        <div class="row">
+            <div id="menus" class="mr-auto">
+                <select id="species" class="form-select mr-2">'
+                    <option value="human"
+                            data-content="<span><span class='color_patch icon' style='background-color:gray'></span> Human</span>"></option>
+                    <option value="gpt4"
+                            data-content="<span><span class='color_patch icon'></span> GPT-4</span>"></option>
+                    <option value="gpt35"
+                            data-content="<span><span class='color_patch icon' style='opacity:0.8'></span> GPT-3.5</span>"></option>
+                    <option value="gpt3"
+                            data-content="<span><span class='color_patch icon' style='opacity:0.6'></span> GPT-3</span>"></option>
+                </select>
+
+            </div>
+            <div class="ml-auto">
+                <div class="float-right mb-1">
+                    <label>View</label>
+                    <div class="btn-group btn-group-toggle" id="view" data-toggle="buttons">
+                        <label class="btn btn-secondary active">
+                            <input type="radio" name="options" id="similarity" checked> Similarity
+                        </label>
+                        <label class="btn btn-secondary">
+                            <input type="radio" name="options" id="mds"> MDS
+                        </label>
+                    </div>
+                </div>
+                <div id="order_box"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mb-5">
+    <div class="row mb-5" id="content">
+
+    </div>
+</div>
+
+
+<script>
+    var mousePos,
+        modality,
+        dataset;
+    // constantly track mouse position
+    document.onmousemove = handleMouseMove;
+
+    function in_bounding_box(id) {
+        var elem = $('#' + id)
+        if (elem.length > 0) {
+            var coords = elem[0].getBoundingClientRect()
+            return mousePos.x > coords.x & mousePos.x < (coords.x + coords.width) &
+                mousePos.y > coords.y
+            //& mousePos.y < (coords.y + coords.height)
+        }
+        return false
+    }
+
+    function handleMouseMove(event) {
+        var dot, eventDoc, doc, body, pageX, pageY;
+
+        event = event || window.event; // IE-ism
+
+        // If pageX/Y aren't available and clientX/Y are,
+        // calculate pageX/Y - logic taken from jQuery.
+        // (This is to support old IE)
+        if (event.pageX == null && event.clientX != null) {
+            eventDoc = (event.target && event.target.ownerDocument) || document;
+            doc = eventDoc.documentElement;
+            body = eventDoc.body;
+
+            event.pageX = event.clientX +
+                (doc && doc.scrollLeft || body && body.scrollLeft || 0) -
+                (doc && doc.clientLeft || body && body.clientLeft || 0);
+            event.pageY = event.clientY +
+                (doc && doc.scrollTop || body && body.scrollTop || 0) -
+                (doc && doc.clientTop || body && body.clientTop || 0);
+        }
+
+        mousePos = {
+            x: event.pageX,
+            y: event.pageY
+        };
+
+
+        ['predicted_simmat', 'real_simmat'].forEach(function (id) {
+            if (!in_bounding_box(id)) {
+                d3.select('#' + id + '_tooltip').style('display', 'none')
+            }
+        })
+
+
+    }
+
+
+    var matrix;
+    var all_data;
+
+    var colorScheme = d3.schemeCategory10;
+
+    get_legend_labels = function (modality) {
+        if (modality === "timbre") {
+            return ['Brass', 'Percussion', 'String', 'Woodwind']
+        } else if (modality === "consonants") {
+            return ['Alveolar', 'Bilabial', 'Dental', 'Labiodental', 'Post-alveolar', 'Velar']
+        }
+    }
+
+    present_stimulus = function (label, modality, group) {
+        if (modality === "colors") {
+            return "<span style='background-color: " + label + "; width: 50px; height: 50px; display: inline-block;'></span>"
+        } else if (modality === "loudness") {
+            return "<span style='color: " + d3.interpolateViridis(normLoudness(label)) + "'>" + label + " dB</span> "
+        } else if (modality === "pitch") {
+            return "<span style='color: " + d3.interpolateViridis(normPitch(label)) + "'>" + label + " Hz</span> "
+        } else if (modality === "timbre") {
+            return "<img style='max-width: 100px' src='media/instruments/" + label + ".jpg'></img>"
+        } else if (modality === "consonants") {
+            return "<span style='font-weight: bold; font-size: 3rem; color: " + colorScheme[group] + "'>" + label + "</span>"
+        } else {
+            return label + " "
+        }
+    }
+
+
+    function remove_old_plots(_id = '#content') {
+        var old_ids = $(_id)[0].children
+        if (old_ids.length > 0) {
+            for (var i = old_ids.length - 1; i >= 0; i--) {
+                old_ids[i].remove()
+            }
+        }
+    }
+
+    get_plot_size = function () {
+        return Math.min(window.innerWidth, window.innerHeight) * 0.75;
+    }
+
+
+    plot_simmat = function (id, modality, json_path) {
+        remove_old_plots();
+        var tooltip_id = id + '_tooltip';
+        if ($('#' + tooltip_id).length > 0) {
+            $('#' + tooltip_id).each(function (i, x) {
+                x.remove();
+            })
+        }
+
+        var margin = {top: 20, right: 0, bottom: 0, left: 20},
+            width = get_plot_size(),
+            height = width;
+
+        var x = d3.scaleBand().range([0, width]),
+            z = d3.scaleLinear().domain([0, 1]).clamp(true);
+
+        var cls = 'mx-auto';
+        // if (id === 'real_simmat') {
+        //     cls = 'mx-auto'
+        // }
+        var svg = d3.select("#content").append("svg")
+            .attr("id", id)
+            .attr("class", cls)
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .style("margin-left", margin.left + "px")
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+        d3.json(json_path, function (data) {
+            $('#order_box')[0].innerHTML = '<div class="input-group mb-3 mt-1">\n' +
+                '  <div class="input-group-prepend">\n' +
+                '    <label class="input-group-text" for="order">Sort by </label>\n' +
+                '  </div>\n' +
+                '  <select class="custom-select" id="order">\n' +
+                '    <option value="sorted_index">cluster</option>\n' +
+                '    <option value="index">index</option>\n' +
+                '  </select>\n' +
+                '</div>'
+
+            all_data = data;
+            var nodes = data.nodes,
+                n = nodes.length;
+            // console.log(n)
+            // console.log(data.links.length)
+            // Compute index per node.
+            var sorted_index = []
+            matrix = []
+            nodes.forEach(function (node, i) {
+                matrix[i] = d3.range(n).map(function (j) {
+                    return {x: j, y: i, z: 0};
+                });
+                sorted_index.push(node.sorted_index)
+            });
+
+            var all_links = []
+            data.links.forEach(function (link) {
+                all_links.push(link.value);
+            });
+
+            var min = d3.min(all_links),
+                max = d3.max(all_links),
+                min_max_diff = max - min;
+
+            var do_normalize = !(min === 0 & max === 1)
+            if (do_normalize) {
+                console.log('Different range, normalizing (min = ' + min + ', max = ' + max + ')')
+            }
+
+            // Convert links to matrix; count character occurrences.
+            data.links.forEach(function (link) {
+                matrix[link.source][link.target].z = (link.value - min) / min_max_diff;
+            });
+
+            // Sort two equally
+            // Precompute the orders.
+            var orders = {
+                index: d3.range(n),
+                sorted_index: sorted_index,
+            };
+
+            // The default sort order.
+            x.domain(orders.sorted_index);
+
+            svg.append("rect")
+                .attr("class", "background")
+                .attr("width", width)
+                .attr("height", height);
+
+            var row = svg.selectAll(".row")
+                .data(matrix)
+                .enter().append("g")
+                .attr("class", "row")
+                .attr("transform", function (d, i) {
+                    return "translate(0," + x(i) + ")";
+                })
+                .each(row);
+
+            row.append("line")
+                .attr("x2", width);
+
+            // Row text
+            row.append("text")
+                .attr("x", -6)
+                .attr("y", x.bandwidth() / 2)
+                .attr("dy", ".32em")
+                .attr("text-anchor", "end")
+                //.text(function(d, i) { return nodes[i].name; });
+                .text(function (d, i) {
+                    return nodes[i].index;
+                });
+
+            var column = svg.selectAll(".column")
+                .data(matrix)
+                .enter().append("g")
+                .attr("class", "column")
+                .attr("transform", function (d, i) {
+                    return "translate(" + x(i) + ")rotate(-90)";
+                });
+
+            column.append("line")
+                .attr("x1", -width);
+            // Col text
+            column.append("text")
+                .attr("x", 6)
+                .attr("y", x.bandwidth() / 2)
+                .attr("dy", ".32em")
+                .attr("text-anchor", "start")
+                .text(function (d, i) {
+                    return nodes[i].index;
+                });
+
+
+            function row(row) {
+                var cell = d3.select(this).selectAll(".cell")
+                    .data(row.filter(function (d) {
+                        // don't filter
+                        return 1;
+                    }))
+                    .enter().append("rect")
+                    .attr("class", "cell")
+                    .attr("x", function (d) {
+                        return x(d.x);
+                    })
+                    .attr("width", x.bandwidth())
+                    .attr("height", x.bandwidth())
+
+                    // .style("fill-opacity", function (d) {
+                    //     return z(d.z);
+                    // })
+                    // .style("fill", function (d) {
+                    //     return c(nodes[d.x].group)
+                    // })
+                    .style("fill", function (d) {
+                        return d3.interpolateViridis(d.z)
+                    })
+                    .on('mouseover', mouseover);
+            }
+
+
+            // create a tooltip
+            //var Tooltip = d3.select('#content')
+            var Tooltip = d3.select('body')
+                .append("div")
+                .attr("id", tooltip_id)
+                .style("opacity", 0)
+                .style("display", 'none')
+                .attr("class", "tooltip")
+                .style("background-color", "white")
+                .style("border", "solid")
+                .style("border-width", "2px")
+                .style("border-radius", "5px")
+                .style("padding", "5px")
+
+            // Three function that change the tooltip when user hover / move / leave a cell
+            function mouseover(d) {
+                var cor = matrix[d.x][d.y].z
+
+                Tooltip
+                    .style("opacity", 1)
+                    .style("display", 'block')
+                    .html(
+                        'Raw score: <strong style="color: ' + d3.interpolateViridis(cor) + ' ">' + cor.toFixed(2) + '</strong><br>' +
+                        present_stimulus(data.nodes[d.x].name, modality, data.nodes[d.x].group) +
+                        present_stimulus(data.nodes[d.y].name, modality, data.nodes[d.y].group)
+                    )
+                    .style("left", mousePos.x + "px")
+                    .style("top", mousePos.y + "px")
+
+            }
+
+
+            d3.select("#order").on("change", function () {
+                //clearTimeout(timeout);
+                order(this.value);
+            });
+
+            function order(value) {
+                x.domain(orders[value]);
+
+                var t = svg.transition().duration(10);
+
+                t.selectAll(".row")
+                    .delay(function (d, i) {
+                        return x(i) * 4;
+                    })
+                    .attr("transform", function (d, i) {
+                        return "translate(0," + x(i) + ")";
+                    })
+                    .selectAll(".cell")
+                    .delay(function (d) {
+                        return x(d.x) * 4;
+                    })
+                    .attr("x", function (d) {
+                        return x(d.x);
+                    });
+
+                t.selectAll(".column")
+                    .delay(function (d, i) {
+                        return x(i) * 4;
+                    })
+                    .attr("transform", function (d, i) {
+                        return "translate(" + x(i) + ")rotate(-90)";
+                    });
+            }
+
+
+            // var timeout = setTimeout(function () {
+            //     order("sorted_index");
+            //     d3.select("#order").property("selectedIndex", 1).node().focus();
+            // }, 5000);
+
+        });
+
+
+    }
+
+    function minMaxNormalization(val, min, max) {
+        return (val - min) / (max - min);
+    }
+
+    function normPitch(value) {
+        return minMaxNormalization(value, 60, 84)
+    }
+
+    function normLoudness(value) {
+        return minMaxNormalization(value, 71.1, 74.6)
+    }
+
+    function sortObjectByKeys(o) {
+        return Object.keys(o).sort().reduce((r, k) => (r[k] = o[k], r), {});
+    }
+
+
+    scatter_plot = function (id, modality, csv_path) {
+        var tooltip_id = id + '_tooltip';
+        var container_id = '#content'
+        if (csv_path.indexOf('mds-1000') !== -1) {
+            tooltip_id += '_full'
+            container_id = '#fullPrediction'
+        }
+
+        if ($('#' + tooltip_id).length > 0) {
+            $('#' + tooltip_id).each(function (i, x) {
+                x.remove();
+            })
+        }
+
+        d3.csv(csv_path, function (data) {
+            // Remove old plot if exists
+            remove_old_plots(container_id);
+            all_data = data;
+            var color_map = {}
+            data.forEach(function (row) {
+                color_map[row.label] = colorScheme[row.group]
+            })
+            color_map = sortObjectByKeys(color_map);
+
+            $('#order_box')[0].innerHTML = ""
+
+            // Variables
+            var x_axis = 'x',
+                y_axis = 'y';
+
+
+            var margin = {top: 20, right: 0, bottom: 0, left: 20},
+                width = get_plot_size(),
+                height = width;
+
+
+            var estimate_range = function (column, return_range = true) {
+                var min = d3.min(data, function (d) {
+                    return +d[column];
+                });
+                var max = d3.max(data, function (d) {
+                    return +d[column];
+                });
+
+                var padding = (max - min) / 5;
+                min = min - padding;
+                max = max + padding;
+
+                if (return_range) {
+                    return ([min, max]);
+                } else {
+                    if (min < 0) {
+                        min = min * -1;
+                    }
+                    return (Math.max(max, min));
+                }
+            };
+
+            var x_range = estimate_range(x_axis);
+            var xScale = d3.scaleLinear()
+                .domain(x_range)
+                .range([0, width]);
+
+
+            var y_range = estimate_range(y_axis);
+            var yScale = d3.scaleLinear()
+                .domain(y_range)
+                .range([height, 0]);
+
+            // SVG
+            var svg = d3.select(container_id).append("svg")
+                .attr("id", id)
+                .attr('height', height)
+                .attr('class', 'mx-auto')
+                .attr('width', width);
+
+
+            // create a tooltip
+            //var Tooltip = d3.select(container_id)
+            var Tooltip = d3.select('body')
+                .append("div")
+                .attr("id", tooltip_id)
+                .style("display", 'none')
+                .attr("class", "tooltip")
+                .style("background-color", "white")
+                .style("border", "solid")
+                .style("border-width", "2px")
+                .style("border-radius", "5px")
+                .style("padding", "5px")
+
+            var xAxis = d3.axisBottom(xScale).tickFormat(function (d) {
+                return null;
+            });
+            var yAxis = d3.axisLeft(yScale).tickFormat(function (d) {
+                return null;
+            });
+
+
+            // X-axis
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(0,' + height / 2 + ')')
+                .call(xAxis);
+
+            // Y-axis
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', 'translate(' + width / 2 + ', 0)')
+                .call(yAxis);
+
+            // Circles
+            var circles = svg.selectAll('circle')
+                .data(data)
+                .enter()
+                .append('circle')
+                .attr('cx', function (d) {
+                    return xScale(d[x_axis])
+                })
+                .attr('cy', function (d) {
+                    return yScale(d[y_axis])
+                })
+                .attr('label', function (d) {
+                    return d.label
+                })
+                .attr('name', function (d) {
+                    return d.name
+                })
+                .attr('group', function (d) {
+                    return d.group
+                })
+                .attr('r', function (d) {
+                    return 5;
+                })
+                .attr('stroke-width', 2)
+                .attr('fill', function (d) {
+                    if (modality === 'colors') {
+                        return d.label
+                    } else if (modality === 'loudness') {
+                        return d3.interpolateViridis(normLoudness(d.label))
+                    } else if (modality === 'pitch') {
+                        return d3.interpolateViridis(normPitch(d.label))
+                    } else {
+                        return colorScheme[d.group]
+                    }
+                })
+                .on('mouseover', function (p) {
+                    var x,
+                        y,
+                        label,
+                        name,
+                        group
+                    d3.select(this)
+                        .transition()
+                        .duration(100)
+                        // increase size
+                        .attr('r', function (d) {
+                            x = d.x
+                            y = d.y
+                            label = d.label
+                            name = d.name
+                            group = d.group
+                            return 15;
+                        });
+
+
+                    Tooltip
+                        .style("display", 'block')
+                        .style("position", 'absolute')
+                        .style("opacity", 1)
+                        .html(
+                            'Label: <strong>' + label + '</strong><br>' +
+                            x_axis + ': ' + parseFloat(x).toFixed(2) + ', ' + y_axis + ': ' + parseFloat(y).toFixed(2) + '<br>' +
+                            present_stimulus(label, modality, group)
+                        )
+                        // present_stimulus(make_url(modality, name)))
+                        .style("left", mousePos.x + "px")
+                        .style("top", mousePos.y + "px")
+
+                    // Prompt video
+                    console.log(tooltip_id)
+                    var media_prev = $('#' + tooltip_id + ' .media_preview')[0]
+                    if (modality === 'audio') {
+                        media_prev.autoplay = true
+                    } else if (modality === 'video') {
+                        media_prev.muted = false
+                        media_prev.loop = false
+                    }
+                })
+                .on('mouseout', function () {
+                    d3.select(this)
+                        .transition()
+                        .duration(500)
+                        // reset original settings
+                        .attr('r', function (d) {
+                            return 5;
+                        });
+
+                    var media_prev = $('#' + tooltip_id + ' .media_preview')[0]
+                    Tooltip
+                        .style("display", 'none')
+                    if (modality === 'audio') {
+                        media_prev.pause()
+                    } else if (modality === 'video') {
+                        media_prev.muted = true
+                    }
+                });
+
+            // legend
+            if (["timbre", "consonants"].includes(modality)) {
+                var keys = get_legend_labels(modality);
+
+                // Add one dot in the legend for each name.
+                svg.selectAll("mydots")
+                    .data(keys)
+                    .enter()
+                    .append("circle")
+                    .attr("cx", 10)
+                    .attr("cy", function (d, i) {
+                        return 100 + i * 25
+                    }) // 100 is where the first dot appears. 25 is the distance between dots
+                    .attr("r", 7)
+                    .style("fill", function (d) {
+                        return colorScheme[keys.indexOf(d)]
+                    })
+                // Add one dot in the legend for each name.
+                svg.selectAll("mylabels")
+                    .data(keys)
+                    .enter()
+                    .append("text")
+                    .attr("x", 20)
+                    .attr("y", function (d, i) {
+                        return 100 + i * 25
+                    }) // 100 is where the first dot appears. 25 is the distance between dots
+                    .style("fill", function (d) {
+                        console.log(keys.indexOf(d))
+                        console.log(colorScheme[keys.indexOf(d)])
+                        return colorScheme[keys.indexOf(d)]
+
+                    })
+                    .text(function (d) {
+                        return d
+                    })
+                    .attr("text-anchor", "left")
+                    .style("alignment-baseline", "middle")
+                    .style("font-size", "1em")
+            }
+        })
+    }
+
+
+    Tour.prototype._onScroll = function (callback, timeout) {
+    };
+    var tour = new Tour({
+        autoscroll: false,
+        debug: true,
+        storage: false,
+        backdrop: false,
+        animation: false,
+        steps: [
+            {
+                element: "#content",
+                content: "Hover over colored areas to see the similarity and the stimuli.",
+                placement: "top",
+            },
+            {
+                element: "#species",
+                content: "Compare human similarity with predicted similarity by GPT.",
+                placement: "bottom",
+            },
+            {
+                element: "#modality",
+                content: "Have a look at all modalities.",
+                placement: "bottom",
+            },
+            {
+                element: "#view",
+                content: "View the stimuli in MDS space.",
+                placement: "bottom",
+            }
+        ]
+    });
+
+    // Initialize the tour
+    tour.init();
+    tour.start(true);
+
+
+    function browser_check() {
+        if (navigator.userAgent.indexOf("Chrome") != -1) {
+
+        } else {
+            $('body').prepend($('<div class="container"><div class="m-3"><div class="alert alert-warning" role="alert">\n' +
+                '  You are not using the Chrome browser which is the recommended browser. Please download it <b><a class="text-dark" href="https://www.google.com/chrome/">here</a></b>' +
+                '</div></div></div>'))
+        }
+    }
+
+    browser_check();
+
+
+    get_active_child = function (id) {
+        var value;
+        Array.from($('#' + id)[0].children).forEach(function (x) {
+            if (x.classList.contains('active')) {
+                value = x.children[0].id;
+            }
+        })
+        return value
+    }
+
+    update_plot = function () {
+        var modality = $('#modality').val()
+        var species = $('#species').val()
+        get_current_color()
+
+        if (get_active_child('view') === 'similarity') {
+            plot_simmat('predicted_simmat', modality, "data/" + modality + "/simmat/" + species + ".json", false)
+        } else {
+            scatter_plot('predicted_mds', modality, "data/" + modality + "/mds/" + species + ".csv", false)
+        }
+    }
+
+    $('#view').click(function (event) {
+        setTimeout(update_plot, 100)
+    })
+
+
+    function activate_menu(_id) {
+        var select = $('#' + _id);
+        select.selectpicker({virtualScroll: 800});
+        select.on("changed.bs.select",
+            function (e, clickedIndex, newValue, oldValue) {
+                update_plot()
+            });
+    }
+
+
+    function get_current_color() {
+        document.documentElement.style.setProperty('--current_color', 'var(--' + $('#modality').val() + ')');
+    }
+
+    function create_menu(_id, values) {
+        var out = '<select id="' + _id + '"  class="form-select mr-2">';
+        for (var i = 0; i < values.length; i++) {
+            var img_path = 'media/icons/' + values[i] + '.svg'
+            var img = '<img class=\'icon\' src=\'' + img_path + '\'></img> '
+            out += '<option value="' + values[i] + '" data-content="<span class=\'menu_item ' + values[i] + '\'>' + img + values[i] + '</span>"></option>';
+        }
+
+        out += '</select>';
+        return out
+    }
+
+    var modality_menu_html = create_menu('modality', ['pitch', 'loudness', 'colors', 'consonants', 'taste', 'timbre'])
+    $('#menus').prepend($(modality_menu_html));
+    activate_menu('modality')
+    activate_menu('species')
+
+    get_current_color();
+
+    update_plot();
+
+</script>
+</body>
+</html>
