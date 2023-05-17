@@ -212,7 +212,7 @@
         } else if (modality === "loudness") {
             return "<span style='color: " + d3.interpolateViridis(normLoudness(label)) + "'>" + label + " dB</span> "
         } else if (modality === "pitch") {
-            return "<span style='color: " + d3.interpolateViridis(normPitch(label)) + "'>" + label + " Hz</span> "
+            return "<span style='color: " + d3.interpolateViridis(normPitch(label)) + "'>" + label + " St</span> "
         } else if (modality === "timbre") {
             return "<img style='max-width: 100px' src='media/instruments/" + label + ".jpg'></img>"
         } else if (modality === "consonants") {
