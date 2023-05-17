@@ -273,8 +273,8 @@
                 '    <label class="input-group-text" for="order">Sort by </label>\n' +
                 '  </div>\n' +
                 '  <select class="custom-select" id="order">\n' +
-                '    <option value="sorted_index">cluster</option>\n' +
                 '    <option value="index">index</option>\n' +
+                '    <option value="sorted_index">cluster</option>\n' +
                 '  </select>\n' +
                 '</div>'
 
@@ -320,7 +320,7 @@
             };
 
             // The default sort order.
-            x.domain(orders.sorted_index);
+            x.domain(orders.index);
 
             svg.append("rect")
                 .attr("class", "background")
@@ -463,6 +463,7 @@
                         return "translate(" + x(i) + ")rotate(-90)";
                     });
             }
+
 
 
             // var timeout = setTimeout(function () {
