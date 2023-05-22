@@ -118,19 +118,17 @@
     }
 
     function prepare_data_and_plot(data, language) {
-        var all_colors, color_map, title, entries, ylim;
+        var all_colors, color_map, title, entries;
         if (language === 'RU') {
             color_map = russian_color_map;
             all_colors = Object.keys(russian_color_map);
             title = 'Russian';
             entries = data.RU_colors;
-            ylim = 10;
         } else if (language === 'EN') {
             color_map = english_color_map;
             all_colors = Object.keys(english_color_map);
             title = 'English';
             entries = data.UK_colors;
-            ylim = 20;
         } else {
             throw 'Language not supported'
         }
@@ -156,7 +154,17 @@
                 })
             }
         }
-        create_bar_plot(histogram_data, language, ylim, title);
+        // Normalize histogram data
+        var sum = histogram_data.map(function (d) {
+            return d.Value;
+        }).reduce(function (a, b) {
+            return a + b;
+        }, 0);
+        histogram_data.forEach(function (d) {
+            d.Value = d.Value / sum * 100;
+        });
+
+        create_bar_plot(histogram_data, language, 100, title);
     }
 
     function zip(keys, values) {
